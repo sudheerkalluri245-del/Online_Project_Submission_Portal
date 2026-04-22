@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Student Dashboard — Project Portal</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body class="dashboard">
+
+<nav class="navbar">
+  <div class="navbar-brand">
+    <div class="brand-icon">🎓</div>
+    <span>Project Portal</span>
+  </div>
+  <div class="navbar-right">
+    <div class="user-badge">
+      <div class="user-avatar" id="userAvatar">S</div>
+      <span class="user-name" id="userName">Student Name</span>
+      <span class="user-role">Student</span>
+    </div>
+    <button id="logoutBtn" onclick="handleLogout()">Logout</button>
+  </div>
+</nav>
+
+<main class="main-content">
+  <header class="page-header">
+    <h2 id="welcomeMsg">Welcome back, Student!</h2>
+    <p>Manage your project submissions and track their status.</p>
+  </header>
+
+  <!-- Stats -->
+  <div class="stats-strip">
+    <div class="stat-card">
+      <div class="stat-icon purple">📁</div>
+      <div class="stat-info">
+        <div class="stat-value" id="totalProjects">0</div>
+        <div class="stat-label">Total Projects</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon green">✅</div>
+      <div class="stat-info">
+        <div class="stat-value" id="approvedProjects">0</div>
+        <div class="stat-label">Approved</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon yellow">⏳</div>
+      <div class="stat-info">
+        <div class="stat-value" id="pendingProjects">0</div>
+        <div class="stat-label">Pending</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-header">
+      <h3>🚀 Submit New Project</h3>
+    </div>
+    <div class="section-body">
+      <form id="submitForm" onsubmit="handleSubmit(event)" class="submit-form">
+        <div class="form-group">
+          <label for="title">Project Title</label>
+          <input type="text" id="title" placeholder="Enter project title" required/>
+        </div>
+        <div class="form-group">
+          <label for="description">Description</label>
+          <textarea id="description" placeholder="Describe your project..." required></textarea>
+        </div>
+        <div class="form-group">
+          <label for="fileLink">Project Link (GitHub/Drive)</label>
+          <input type="url" id="fileLink" placeholder="https://github.com/..." required/>
+        </div>
+        <button type="submit" class="btn btn-primary" id="submitBtn">Submit Project</button>
+        <div class="alert" id="submitAlert"></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-header">
+      <h3>📚 My Submissions</h3>
+    </div>
+    <div class="section-body">
+      <div id="projectsList" class="projects-list">
+        <div class="loading">Loading your projects...</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const API = window.location.origin + '/api';
+  const token = localStorage.getItem('token');
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
+
+  // Auth Check
+  if (!token || !user || user.role !== 'student') {
+    window.location.href = 'index.html';
+  }
+
+  // Set Profile UI
+  document.getElementById('userName').textContent = user.name;
+  document.getElementById('userAvatar').textContent = user.name[0].toUpperCase();
+  document.getElementById('welcomeMsg').textContent = `Welcome back, ${user.name.split(' ')[0]}!`;
+
+  function handleLogout() {
+    localStorage.clear();
+    window.location.href = 'index.html';
+  }
+
+  function showAlert(id, message, type = 'error') {
+    const el = document.getElementById(id);
+    el.textContent = message;
+    el.className = `alert show alert-${type}`;
+    setTimeout(() => el.classList.remove('show'), 4000);
+  }
+
+  // Fetch Projects
+  async function fetchProjects() {
+    try {
+      const res = await fetch(`${API}/projects/my`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const projects = await res.json();
+      if (!res.ok) throw new Error(projects.message);
+
+      renderProjects(projects);
+      updateStats(projects);
+    } catch (err) {
+      document.getElementById('projectsList').innerHTML = `<div class="empty-state"><p>${err.message}</p></div>`;
+    }
+  }
+
+  function updateStats(projects) {
+    document.getElementById('totalProjects').textContent = projects.length;
+    document.getElementById('approvedProjects').textContent = projects.filter(p => p.status === 'approved').length;
+    document.getElementById('pendingProjects').textContent = projects.filter(p => p.status === 'pending').length;
+  }
+
+  function renderProjects(projects) {
+    const list = document.getElementById('projectsList');
+    if (projects.length === 0) {
+      list.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">📁</div>
+          <p>You haven't submitted any projects yet.</p>
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = projects.map(p => `
+      <div class="project-card">
+        <div class="project-card-header">
+          <div>
+            <h4 class="project-title">${p.title}</h4>
+            <div class="project-meta">Submitted on ${new Date(p.createdAt).toLocaleDateString()}</div>
+          </div>
+          <span class="status-badge status-${p.status}">${p.status}</span>
+        </div>
+        <p class="project-desc">${p.description}</p>
+        <div class="project-footer">
+          <a href="${p.fileLink}" target="_blank" class="project-link">🔗 View Project Link</a>
+        </div>
+        ${p.feedback ? `
+          <div class="existing-feedback">
+            <strong>Faculty Feedback:</strong> ${p.feedback}
+          </div>
+        ` : ''}
+      </div>
+    `).join('');
+  }
+
+  // Handle Submit
+  async function handleSubmit(e) {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    btn.textContent = 'Submitting...';
+    btn.disabled = true;
+
+    const projectData = {
+      title: document.getElementById('title').value,
+      description: document.getElementById('description').value,
+      fileLink: document.getElementById('fileLink').value
+    };
+
+    try {
+      const res = await fetch(`${API}/projects`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(projectData)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+
+      showAlert('submitAlert', 'Project submitted successfully!', 'success');
+      document.getElementById('submitForm').reset();
+      fetchProjects();
+    } catch (err) {
+      showAlert('submitAlert', err.message);
+    } finally {
+      btn.textContent = 'Submit Project';
+      btn.disabled = false;
+    }
+  }
+
+  // Initial Load
+  fetchProjects();
+</script>
+</body>
+</html>

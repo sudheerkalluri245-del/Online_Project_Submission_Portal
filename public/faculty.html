@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Faculty Dashboard — Project Portal</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body class="dashboard">
+
+<nav class="navbar">
+  <div class="navbar-brand">
+    <div class="brand-icon">🎓</div>
+    <span>Project Portal</span>
+  </div>
+  <div class="navbar-right">
+    <div class="user-badge">
+      <div class="user-avatar" id="userAvatar">F</div>
+      <span class="user-name" id="userName">Faculty Name</span>
+      <span class="user-role">Faculty</span>
+    </div>
+    <button id="logoutBtn" onclick="handleLogout()">Logout</button>
+  </div>
+</nav>
+
+<main class="main-content">
+  <header class="page-header">
+    <h2 id="welcomeMsg">Review Submissions</h2>
+    <p>Manage and review student project submissions.</p>
+  </header>
+
+  <!-- Stats -->
+  <div class="stats-strip">
+    <div class="stat-card">
+      <div class="stat-icon purple">📥</div>
+      <div class="stat-info">
+        <div class="stat-value" id="totalSubmissions">0</div>
+        <div class="stat-label">Total Submissions</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon yellow">⚖️</div>
+      <div class="stat-info">
+        <div class="stat-value" id="pendingReview">0</div>
+        <div class="stat-label">Pending Review</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon green">🏆</div>
+      <div class="stat-info">
+        <div class="stat-value" id="approvedTotal">0</div>
+        <div class="stat-label">Approved</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-header">
+      <h3>📋 Project Queue</h3>
+    </div>
+    <div class="section-body">
+      <div id="projectsList" class="projects-list">
+        <div class="loading">Fetching submissions...</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const API = window.location.origin + '/api';
+  const token = localStorage.getItem('token');
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
+
+  // Auth Check
+  if (!token || !user || user.role !== 'faculty') {
+    window.location.href = 'index.html';
+  }
+
+  // Set Profile UI
+  document.getElementById('userName').textContent = user.name;
+  document.getElementById('userAvatar').textContent = user.name[0].toUpperCase();
+
+  function handleLogout() {
+    localStorage.clear();
+    window.location.href = 'index.html';
+  }
+
+  // Fetch All Projects
+  async function fetchAllProjects() {
+    try {
+      const res = await fetch(`${API}/projects`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const projects = await res.json();
+      if (!res.ok) throw new Error(projects.message);
+
+      renderProjects(projects);
+      updateStats(projects);
+    } catch (err) {
+      document.getElementById('projectsList').innerHTML = `<div class="empty-state"><p>${err.message}</p></div>`;
+    }
+  }
+
+  function updateStats(projects) {
+    document.getElementById('totalSubmissions').textContent = projects.length;
+    document.getElementById('pendingReview').textContent = projects.filter(p => p.status === 'pending').length;
+    document.getElementById('approvedTotal').textContent = projects.filter(p => p.status === 'approved').length;
+  }
+
+  function renderProjects(projects) {
+    const list = document.getElementById('projectsList');
+    if (projects.length === 0) {
+      list.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">📤</div>
+          <p>No project submissions yet.</p>
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = projects.map(p => `
+      <div class="project-card">
+        <div class="project-card-header">
+          <div>
+            <h4 class="project-title">${p.title}</h4>
+            <div class="project-meta">Submitted by <strong>${p.studentId.name}</strong> (${p.studentId.email})</div>
+          </div>
+          <span class="status-badge status-${p.status}">${p.status}</span>
+        </div>
+        <p class="project-desc">${p.description}</p>
+        <div class="project-footer">
+          <a href="${p.fileLink}" target="_blank" class="project-link">🔗 View Project Content</a>
+        </div>
+
+        ${p.status === 'pending' ? `
+          <div class="feedback-section">
+            <div class="feedback-label">Faculty Feedback (Optional)</div>
+            <textarea id="feedback-${p._id}" class="feedback-input" placeholder="Enter feedback here..."></textarea>
+            <div class="review-actions">
+              <button class="btn btn-success" onclick="reviewProject('${p._id}', 'approved')">Approve</button>
+              <button class="btn btn-danger" onclick="reviewProject('${p._id}', 'rejected')">Reject</button>
+            </div>
+          </div>
+        ` : `
+          <div class="existing-feedback">
+            <strong>${p.status === 'approved' ? '✅ Approved' : '❌ Rejected'}</strong>
+            ${p.feedback ? `<p style="margin-top:4px;">Feedback: ${p.feedback}</p>` : ''}
+          </div>
+        `}
+      </div>
+    `).join('');
+  }
+
+  async function reviewProject(id, status) {
+    const feedback = document.getElementById(`feedback-${id}`).value;
+    
+    try {
+      const res = await fetch(`${API}/projects/${id}`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status, feedback })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+
+      fetchAllProjects(); // Refresh list
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  // Initial Load
+  fetchAllProjects();
+</script>
+</body>
+</html>
